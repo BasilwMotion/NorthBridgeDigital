@@ -1,0 +1,852 @@
+import { useState, useEffect, useRef } from "react";
+
+// ─── PALETTE & CONSTANTS ────────────────────────────────────────────────────
+const ACCENT = "#00FFB2";
+const ACCENT2 = "#FF6B35";
+const GOLD = "#FFD700";
+const BG = "#080C10";
+const CARD = "#0D1117";
+const CARD2 = "#111820";
+const BORDER = "#1E2A3A";
+const TEXT = "#E8F4FF";
+const MUTED = "#4A6080";
+const TARGET_ZAR = 10_000_000;
+const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+const START_DATE = new Date("2025-06-05");
+
+// ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
+function useWidth() {
+  const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+  useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return w;
+}
+
+// ─── STORAGE HELPERS ─────────────────────────────────────────────────────────
+const store = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+// ─── ICONS ───────────────────────────────────────────────────────────────────
+const Icon = ({ d, size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={d} />
+  </svg>
+);
+
+const icons = {
+  dashboard: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10",
+  goals: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  finance: "M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  ai: "M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2M8 12h8M12 8v8",
+  tasks: "M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+  brain: "M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-1.07-4.13A3 3 0 0 1 4.46 9a3 3 0 0 1 .5-5.77A2.5 2.5 0 0 1 9.5 2",
+  send: "M22 2L11 13 M22 2L15 22l-4-9-9-4 22-7z",
+  plus: "M12 5v14M5 12h14",
+  trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
+  check: "M20 6L9 17l-5-5",
+  chart: "M18 20V10M12 20V4M6 20v-6",
+  bolt: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+  calendar: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18",
+  money: "M2 17l10 5 10-5M2 12l10 5 10-5M2 7l10-5 10 5-10 5-10-5z",
+  target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  collapse: "M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3",
+  expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
+};
+
+// ─── RADIAL PROGRESS ─────────────────────────────────────────────────────────
+function RadialProgress({ pct, size = 80, stroke = 7, color = ACCENT }) {
+  const r = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - Math.min(pct, 1));
+  return (
+    <div style={{ position: "relative", width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", position: "absolute" }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={BORDER} strokeWidth={stroke} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1)" }} />
+      </svg>
+      <div style={{ fontSize: size * 0.2, fontWeight: 800, color, fontFamily: "'Space Mono',monospace", zIndex: 1 }}>
+        {Math.round(pct * 100)}%
+      </div>
+    </div>
+  );
+}
+
+// ─── BAR CHART ───────────────────────────────────────────────────────────────
+function BarChart({ data, color = ACCENT, height = 80, labels }) {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, height: "100%" }}>
+          <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end" }}>
+            <div style={{
+              width: "100%", borderRadius: "3px 3px 0 0",
+              background: `linear-gradient(180deg,${d.color||color},${(d.color||color)}88)`,
+              height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 3 : 0,
+              transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)",
+            }} />
+          </div>
+          {labels && <div style={{ fontSize: 8, color: MUTED, whiteSpace: "nowrap" }}>{labels[i]}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── STAT TILE ────────────────────────────────────────────────────────────────
+function StatTile({ label, value, sub, color = ACCENT }) {
+  return (
+    <div style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", flex: "1 1 0", minWidth: 0 }}>
+      <div style={{ fontSize: 9, color: MUTED, letterSpacing: 1.2, fontFamily: "'Space Mono',monospace", textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color, fontFamily: "'Space Mono',monospace", lineHeight: 1, wordBreak: "break-all" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ─── SECTION CARD ─────────────────────────────────────────────────────────────
+function SectionCard({ title, icon, children, accent = ACCENT, extra, style: s = {} }) {
+  return (
+    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 16, position: "relative", overflow: "hidden", ...s }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg,${accent},${accent}00)` }} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: `${accent}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon d={icon} size={14} color={accent} />
+          </div>
+          <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 12, color: TEXT, letterSpacing: 0.8 }}>{title}</span>
+        </div>
+        {extra}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ─── GOAL ITEM ────────────────────────────────────────────────────────────────
+function GoalItem({ goal, onToggle, onDelete, onEdit }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(goal.text);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: goal.done ? `${ACCENT}0A` : CARD2, borderRadius: 10, border: `1px solid ${goal.done ? ACCENT+"40" : BORDER}`, marginBottom: 6 }}>
+      {/* 44×44 touch target for checkbox */}
+      <button onClick={() => onToggle(goal.id)} aria-label={goal.done ? "Mark incomplete" : "Mark complete"}
+        style={{ width: 44, height: 44, minWidth: 44, borderRadius: 8, border: `2px solid ${goal.done ? ACCENT : BORDER}`, background: goal.done ? ACCENT : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {goal.done && <Icon d={icons.check} size={14} color={BG} />}
+      </button>
+      {editing ? (
+        <input value={text} onChange={e => setText(e.target.value)}
+          onBlur={() => { onEdit(goal.id, text); setEditing(false); }}
+          onKeyDown={e => e.key === "Enter" && (onEdit(goal.id, text), setEditing(false))}
+          autoFocus style={{ flex: 1, background: "transparent", border: "none", outline: `1px solid ${ACCENT}`, color: TEXT, fontSize: 13, padding: "4px 6px", borderRadius: 4, minWidth: 0 }} />
+      ) : (
+        <span style={{ flex: 1, fontSize: 13, color: goal.done ? MUTED : TEXT, textDecoration: goal.done ? "line-through" : "none", cursor: "pointer", minWidth: 0 }}
+          onDoubleClick={() => setEditing(true)}>{goal.text}</span>
+      )}
+      {goal.priority && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 10, background: goal.priority === "high" ? `${ACCENT2}22` : `${ACCENT}22`, color: goal.priority === "high" ? ACCENT2 : ACCENT, flexShrink: 0 }}>{goal.priority}</span>}
+      {/* 44×44 touch target for delete */}
+      <button onClick={() => onDelete(goal.id)} aria-label="Delete goal"
+        style={{ width: 44, height: 44, minWidth: 44, background: "none", border: "none", cursor: "pointer", color: MUTED, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon d={icons.trash} size={14} />
+      </button>
+    </div>
+  );
+}
+
+// ─── ADD GOAL FORM ────────────────────────────────────────────────────────────
+function AddGoalForm({ onAdd, placeholder = "Add goal…" }) {
+  const [text, setText] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const submit = () => { if (text.trim()) { onAdd(text, priority); setText(""); } };
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+      <input value={text} onChange={e => setText(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && submit()}
+        placeholder={placeholder}
+        style={{ flex: 1, minWidth: 0, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 12px", color: TEXT, fontSize: 13, outline: "none", height: 44 }} />
+      <select value={priority} onChange={e => setPriority(e.target.value)}
+        style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontSize: 12, padding: "0 6px", height: 44, flexShrink: 0 }}>
+        <option value="low">Low</option>
+        <option value="medium">Mid</option>
+        <option value="high">High</option>
+      </select>
+      <button onClick={submit} aria-label="Add goal"
+        style={{ background: ACCENT, color: BG, border: "none", borderRadius: 8, width: 44, height: 44, cursor: "pointer", fontWeight: 700, fontSize: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+    </div>
+  );
+}
+
+// ─── BRANCH NODE ─────────────────────────────────────────────────────────────
+function BranchNode({ node, depth = 0, onAdd, onDelete, onEdit, onToggle }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(node.text);
+  const [adding, setAdding] = useState(false);
+  const [newText, setNewText] = useState("");
+  const colors = [ACCENT, ACCENT2, GOLD, "#A78BFA", "#60A5FA"];
+  const c = colors[depth % colors.length];
+  return (
+    <div style={{ marginLeft: depth > 0 ? 16 : 0, position: "relative" }}>
+      {depth > 0 && <div style={{ position: "absolute", left: -10, top: 22, width: 8, height: 1, background: `${c}50` }} />}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 8px", borderRadius: 8, border: `1px solid ${c}30`, background: `${c}08`, marginBottom: 4 }}>
+        {node.children?.length > 0 && (
+          <button onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Expand" : "Collapse"}
+            style={{ width: 28, height: 28, background: "none", border: "none", cursor: "pointer", color: c, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon d={collapsed ? icons.expand : icons.collapse} size={12} color={c} />
+          </button>
+        )}
+        <button onClick={() => onToggle(node.id)} aria-label="Toggle complete"
+          style={{ width: 28, height: 28, minWidth: 28, borderRadius: 5, border: `1.5px solid ${node.done ? c : BORDER}`, background: node.done ? c : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {node.done && <Icon d={icons.check} size={10} color={BG} />}
+        </button>
+        {editing ? (
+          <input value={text} onChange={e => setText(e.target.value)}
+            onBlur={() => { onEdit(node.id, text); setEditing(false); }}
+            onKeyDown={e => e.key === "Enter" && (onEdit(node.id, text), setEditing(false))}
+            autoFocus style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TEXT, fontSize: 12, minWidth: 0 }} />
+        ) : (
+          <span onDoubleClick={() => setEditing(true)} style={{ flex: 1, fontSize: 12, color: node.done ? MUTED : TEXT, textDecoration: node.done ? "line-through" : "none", minWidth: 0 }}>{node.text}</span>
+        )}
+        <button onClick={() => setAdding(!adding)} aria-label="Add child branch"
+          style={{ width: 32, height: 32, background: "none", border: "none", cursor: "pointer", color: MUTED, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon d={icons.plus} size={12} />
+        </button>
+        <button onClick={() => onDelete(node.id)} aria-label="Delete branch"
+          style={{ width: 32, height: 32, background: "none", border: "none", cursor: "pointer", color: MUTED, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon d={icons.trash} size={12} />
+        </button>
+      </div>
+      {adding && (
+        <div style={{ marginLeft: 16, marginBottom: 4, display: "flex", gap: 6 }}>
+          <input value={newText} onChange={e => setNewText(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && newText.trim()) { onAdd(node.id, newText); setNewText(""); setAdding(false); } if (e.key === "Escape") setAdding(false); }}
+            placeholder="Branch name…" autoFocus style={{ flex: 1, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 6, padding: "8px 10px", color: TEXT, fontSize: 12, outline: "none", height: 44, minWidth: 0 }} />
+          <button onClick={() => { if (newText.trim()) { onAdd(node.id, newText); setNewText(""); setAdding(false); } }}
+            style={{ background: c, color: BG, border: "none", borderRadius: 6, width: 44, height: 44, cursor: "pointer", fontWeight: 700, fontSize: 16, flexShrink: 0 }}>+</button>
+        </div>
+      )}
+      {!collapsed && node.children?.map(child => (
+        <BranchNode key={child.id} node={child} depth={depth + 1} onAdd={onAdd} onDelete={onDelete} onEdit={onEdit} onToggle={onToggle} />
+      ))}
+    </div>
+  );
+}
+
+// ─── CHAT BUBBLE ─────────────────────────────────────────────────────────────
+function ChatBubble({ msg }) {
+  const isUser = msg.role === "user";
+  return (
+    <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: 10 }}>
+      {!isUser && (
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg,${ACCENT},#00A878)`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0, marginTop: 2 }}>
+          <Icon d={icons.bolt} size={14} color={BG} />
+        </div>
+      )}
+      <div style={{ maxWidth: "78%", padding: "10px 14px", borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px", background: isUser ? `${ACCENT}22` : CARD2, border: `1px solid ${isUser ? ACCENT+"40" : BORDER}`, fontSize: 13, color: TEXT, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        {msg.content}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const vw = useWidth();
+  const isMobile = vw < 768;
+  const isNarrow = vw < 480;
+
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [dailyGoals, setDailyGoals] = useState(() => store.get("daily_goals", []));
+  const [monthlyGoals, setMonthlyGoals] = useState(() => store.get("monthly_goals", []));
+  const [quarterGoals, setQuarterGoals] = useState(() => store.get("quarter_goals", []));
+  const [revenues, setRevenues] = useState(() => store.get("revenues", []));
+  const [expenses, setExpenses] = useState(() => store.get("expenses", []));
+  const [chatMessages, setChatMessages] = useState(() => store.get("chat_messages", [{
+    role: "assistant", content: `Hey! I'm APEX — your AI performance partner. 🚀\n\nYour goal: R10,000,000 in 2 years. That's R416,667/month or R13,889/day.\n\nI can:\n• Suggest daily tasks & goals\n• Research income opportunities\n• Analyze your progress\n• Help you build systems\n\nWhat would you like to tackle first?`
+  }]));
+  const [chatInput, setChatInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [webPermission, setWebPermission] = useState(false);
+  const [branches, setBranches] = useState(() => store.get("branches", [
+    { id: "1", text: "🎯 10M ZAR Mission", done: false, children: [
+      { id: "1-1", text: "Primary Income Stream", done: false, children: [
+        { id: "1-1-1", text: "Identify core skill", done: false, children: [] },
+        { id: "1-1-2", text: "Package as service/product", done: false, children: [] },
+      ]},
+      { id: "1-2", text: "Secondary Income Streams", done: false, children: [] },
+    ]}
+  ]));
+  const [dailyHistory, setDailyHistory] = useState(() => store.get("daily_history", []));
+  const [newRevenue, setNewRevenue] = useState({ label: "", amount: "", category: "freelance" });
+  const [newExpense, setNewExpense] = useState({ label: "", amount: "", category: "business" });
+  const [goalsSubTab, setGoalsSubTab] = useState("daily");
+  const chatEndRef = useRef(null);
+
+  // Persist
+  useEffect(() => { store.set("daily_goals", dailyGoals); }, [dailyGoals]);
+  useEffect(() => { store.set("monthly_goals", monthlyGoals); }, [monthlyGoals]);
+  useEffect(() => { store.set("quarter_goals", quarterGoals); }, [quarterGoals]);
+  useEffect(() => { store.set("revenues", revenues); }, [revenues]);
+  useEffect(() => { store.set("expenses", expenses); }, [expenses]);
+  useEffect(() => { store.set("chat_messages", chatMessages.slice(-100)); }, [chatMessages]);
+  useEffect(() => { store.set("branches", branches); }, [branches]);
+  useEffect(() => { store.set("daily_history", dailyHistory); }, [dailyHistory]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  // Record daily completion history
+  useEffect(() => {
+    if (dailyGoals.length === 0) return;
+    const today = new Date().toISOString().split("T")[0];
+    const pct = dailyGoals.filter(g => g.done).length / dailyGoals.length;
+    setDailyHistory(h => {
+      const idx = h.findIndex(d => d.date === today);
+      if (idx >= 0) { const n = [...h]; n[idx] = { date: today, pct }; return n; }
+      return [...h.slice(-29), { date: today, pct }];
+    });
+  }, [dailyGoals]);
+
+  // ── GOAL HELPERS ──────────────────────────────────────────────────────────
+  const makeGoal = (text, priority) => ({ id: Date.now().toString(), text, done: false, priority, createdAt: new Date().toISOString() });
+  const goalOps = (setter) => ({
+    add: (text, priority) => setter(g => [...g, makeGoal(text, priority)]),
+    toggle: (id) => setter(g => g.map(x => x.id === id ? { ...x, done: !x.done } : x)),
+    delete: (id) => setter(g => g.filter(x => x.id !== id)),
+    edit: (id, text) => setter(g => g.map(x => x.id === id ? { ...x, text } : x)),
+  });
+  const daily = goalOps(setDailyGoals);
+  const monthly = goalOps(setMonthlyGoals);
+  const quarter = goalOps(setQuarterGoals);
+
+  // ── FINANCE HELPERS ───────────────────────────────────────────────────────
+  const totalRevenue = revenues.reduce((s, r) => s + Number(r.amount), 0);
+  const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const netIncome = totalRevenue - totalExpenses;
+  const daysSinceStart = Math.max(1, Math.floor((Date.now() - START_DATE.getTime()) / 86400000));
+  const daysRemaining = Math.max(0, Math.floor((START_DATE.getTime() + TWO_YEARS_MS - Date.now()) / 86400000));
+  const pctTimeGone = Math.min(1, daysSinceStart / 730);
+  const targetByNow = TARGET_ZAR * pctTimeGone;
+  const progressPct = Math.min(1, totalRevenue / TARGET_ZAR);
+  const monthlyTarget = TARGET_ZAR / 24;
+  const dailyTarget = TARGET_ZAR / 730;
+
+  // ── BRANCH HELPERS ────────────────────────────────────────────────────────
+  const deepMap = (nodes, id, fn) => nodes.map(n => n.id === id ? fn(n) : { ...n, children: deepMap(n.children || [], id, fn) });
+  const deepFilter = (nodes, id) => nodes.filter(n => n.id !== id).map(n => ({ ...n, children: deepFilter(n.children || [], id) }));
+  const addBranch = (parentId, text) => {
+    const node = { id: Date.now().toString(), text, done: false, children: [] };
+    if (!parentId) { setBranches(b => [...b, node]); return; }
+    setBranches(b => deepMap(b, parentId, n => ({ ...n, children: [...(n.children || []), node] })));
+  };
+  const deleteBranch = (id) => setBranches(b => deepFilter(b, id));
+  const editBranch = (id, text) => setBranches(b => deepMap(b, id, n => ({ ...n, text })));
+  const toggleBranch = (id) => setBranches(b => deepMap(b, id, n => ({ ...n, done: !n.done })));
+
+  // ── AI CHAT ───────────────────────────────────────────────────────────────
+  const sendChat = async (overrideMsg) => {
+    const text = (overrideMsg || chatInput).trim();
+    if (!text) return;
+    setChatInput("");
+    const userMsg = { role: "user", content: text };
+    setChatMessages(m => [...m, userMsg]);
+    setIsTyping(true);
+    const systemPrompt = `You are APEX — an elite AI performance coach. The user's goal: Earn R10,000,000 ZAR in 2 years (started June 2025). Daily target: R${dailyTarget.toFixed(0)}. Monthly target: R${monthlyTarget.toFixed(0)}. Current revenue: R${totalRevenue}. Net income: R${netIncome}. Days remaining: ${daysRemaining}. Daily goals: ${dailyGoals.map(g => `${g.done?"✓":"○"} ${g.text}`).join(", ")||"none"}. Monthly goals: ${monthlyGoals.map(g => `${g.done?"✓":"○"} ${g.text}`).join(", ")||"none"}. Be concise, actionable, and South African context-aware.`;
+    try {
+      const tools = webPermission ? [{ type: "web_search_20250305", name: "web_search" }] : undefined;
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514", max_tokens: 1000, system: systemPrompt,
+          messages: [...chatMessages.slice(-20), userMsg].map(m => ({ role: m.role, content: m.content })),
+          ...(tools ? { tools } : {})
+        })
+      });
+      const data = await res.json();
+      const reply = (data.content || []).map(i => i.type === "text" ? i.text : "").filter(Boolean).join("\n");
+      setChatMessages(m => [...m, { role: "assistant", content: reply || "Try again." }]);
+    } catch {
+      setChatMessages(m => [...m, { role: "assistant", content: "Connection error. Please try again." }]);
+    }
+    setIsTyping(false);
+  };
+
+  // ── COMPUTED ──────────────────────────────────────────────────────────────
+  const dailyCompletion = dailyGoals.length > 0 ? dailyGoals.filter(g => g.done).length / dailyGoals.length : 0;
+  const monthlyCompletion = monthlyGoals.length > 0 ? monthlyGoals.filter(g => g.done).length / monthlyGoals.length : 0;
+  const quarterCompletion = quarterGoals.length > 0 ? quarterGoals.filter(g => g.done).length / quarterGoals.length : 0;
+  const historyData = dailyHistory.slice(-7).map(d => ({ value: d.pct * 100, color: ACCENT }));
+
+  // ── NAV CONFIG ────────────────────────────────────────────────────────────
+  const navItems = [
+    { id: "dashboard", icon: icons.dashboard, label: "Home" },
+    { id: "goals", icon: icons.goals, label: "Goals" },
+    { id: "finance", icon: icons.finance, label: "Finance" },
+    { id: "ai", icon: icons.ai, label: "APEX AI" },
+    { id: "productivity", icon: icons.brain, label: "Workspace" },
+  ];
+
+  const quickPrompts = [
+    "Suggest 5 daily goals for today",
+    "Best ways to earn in SA right now?",
+    "Analyze my progress toward R10M",
+    "Give me a daily productivity schedule",
+  ];
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ minHeight: "100vh", background: BG, color: TEXT, fontFamily: "'DM Sans','Segoe UI',sans-serif", display: "flex", flexDirection: "column", maxWidth: "100vw", overflowX: "hidden" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700;800&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { -webkit-text-size-adjust: 100%; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-thumb { background: ${BORDER}; border-radius: 4px; }
+        input, textarea, select { font-family: inherit; -webkit-appearance: none; }
+        input::placeholder, textarea::placeholder { color: ${MUTED}; }
+        select option { background: ${CARD}; color: ${TEXT}; }
+        button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes slide-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+        .typing-dot { width:6px; height:6px; border-radius:50%; background:${ACCENT}; animation:pulse 1.2s infinite; }
+        .nav-btn:active { background: ${ACCENT}20 !important; }
+        .chip-btn:active { background: ${ACCENT}22 !important; color: ${ACCENT} !important; }
+      `}</style>
+
+      {/* ── DESKTOP SIDEBAR + MOBILE LAYOUT WRAPPER ── */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+
+        {/* Desktop sidebar — hidden on mobile */}
+        {!isMobile && (
+          <div style={{ width: 200, background: CARD, borderRight: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh", flexShrink: 0 }}>
+            <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${BORDER}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg,${ACCENT},#00A878)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon d={icons.bolt} size={17} color={BG} />
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 14, color: ACCENT }}>APEX</div>
+                  <div style={{ fontSize: 9, color: MUTED }}>R10M in 2 Years</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: "10px 8px", flex: 1 }}>
+              {navItems.map(item => (
+                <button key={item.id} className="nav-btn" onClick={() => setActiveTab(item.id)} style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "10px 10px",
+                  borderRadius: 10, border: "none", background: activeTab === item.id ? `${ACCENT}18` : "transparent",
+                  color: activeTab === item.id ? ACCENT : MUTED, cursor: "pointer", fontSize: 13,
+                  fontWeight: activeTab === item.id ? 700 : 400, marginBottom: 2, transition: "all 0.15s", minHeight: 44,
+                }}>
+                  <Icon d={item.icon} size={15} color={activeTab === item.id ? ACCENT : MUTED} />{item.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: "12px 12px", borderTop: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 9, color: MUTED, marginBottom: 5, fontFamily: "'Space Mono',monospace" }}>MISSION PROGRESS</div>
+              <div style={{ background: `${ACCENT}15`, borderRadius: 6, height: 5, marginBottom: 5 }}>
+                <div style={{ background: `linear-gradient(90deg,${ACCENT},#00D9A6)`, height: "100%", borderRadius: 6, width: `${progressPct * 100}%`, transition: "width 0.8s" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9 }}>
+                <span style={{ color: ACCENT, fontFamily: "'Space Mono',monospace" }}>R{(totalRevenue/1000).toFixed(0)}K</span>
+                <span style={{ color: MUTED }}>{daysRemaining}d left</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main scrollable content */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflowX: "hidden" }}>
+
+          {/* Mobile header */}
+          {isMobile && (
+            <div style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg,${ACCENT},#00A878)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon d={icons.bolt} size={15} color={BG} />
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 13, color: ACCENT }}>APEX</div>
+                  <div style={{ fontSize: 9, color: MUTED }}>R10M Mission · {daysRemaining}d left</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 9, color: MUTED }}>Revenue</div>
+                <div style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 13, color: ACCENT }}>R{(totalRevenue/1000).toFixed(1)}K</div>
+              </div>
+            </div>
+          )}
+
+          {/* Page content */}
+          <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px 100px" : "24px 28px", minWidth: 0 }}>
+
+            {/* ════ DASHBOARD ══════════════════════════════════════ */}
+            {activeTab === "dashboard" && (
+              <div style={{ animation: "slide-in 0.3s ease" }}>
+                {!isMobile && (
+                  <div style={{ marginBottom: 20 }}>
+                    <h1 style={{ fontFamily: "'Space Mono',monospace", fontSize: 22, fontWeight: 700 }}>
+                      Good {new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 17 ? "Afternoon" : "Evening"} 👋
+                    </h1>
+                    <div style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>
+                      {new Date().toLocaleDateString("en-ZA", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                      {" · "}<span style={{ color: ACCENT }}>Day {daysSinceStart} of 730</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Stats row — 2×2 on narrow, row on wider */}
+                <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr 1fr" : "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
+                  <StatTile label="Revenue" value={`R${(totalRevenue/1000).toFixed(1)}K`} sub={`Target R${(targetByNow/1000).toFixed(0)}K`} color={totalRevenue >= targetByNow ? ACCENT : ACCENT2} />
+                  <StatTile label="Daily Need" value={`R${dailyTarget.toFixed(0)}`} sub="per day" color={GOLD} />
+                  <StatTile label="Monthly" value={`R${(monthlyTarget/1000).toFixed(0)}K`} sub="required" color="#A78BFA" />
+                  <StatTile label="Days Left" value={daysRemaining} sub={`${Math.round(daysRemaining/30)}mo`} color={ACCENT2} />
+                </div>
+
+                {/* Mission progress bar */}
+                <div style={{ background: CARD, border: `1px solid ${ACCENT}30`, borderRadius: 14, padding: "14px 16px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 9, color: MUTED, fontFamily: "'Space Mono',monospace", letterSpacing: 1.5 }}>TOTAL REVENUE</div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: ACCENT, fontFamily: "'Space Mono',monospace", lineHeight: 1.1 }}>R{totalRevenue.toLocaleString("en-ZA")}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 9, color: MUTED }}>PROGRESS</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: GOLD, fontFamily: "'Space Mono',monospace" }}>{(progressPct * 100).toFixed(3)}%</div>
+                    </div>
+                  </div>
+                  <div style={{ background: BORDER, borderRadius: 6, height: 7 }}>
+                    <div style={{ background: `linear-gradient(90deg,${ACCENT},#00D9A6 60%,${GOLD})`, height: "100%", borderRadius: 6, width: `${Math.max(progressPct * 100, 0.3)}%`, transition: "width 1s" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: MUTED, marginTop: 3 }}>
+                    <span>R0</span><span>R5M</span><span>R10M 🎯</span>
+                  </div>
+                </div>
+
+                {/* Goal summaries — stack on mobile */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                  <SectionCard title="TODAY'S GOALS" icon={icons.tasks} accent={ACCENT}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
+                      <RadialProgress pct={dailyCompletion} size={56} stroke={6} color={ACCENT} />
+                      <div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: ACCENT, fontFamily: "'Space Mono',monospace" }}>{dailyGoals.filter(g=>g.done).length}/{dailyGoals.length}</div>
+                        <div style={{ fontSize: 11, color: MUTED }}>completed today</div>
+                      </div>
+                    </div>
+                    {dailyGoals.slice(0, 3).map(g => (
+                      <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, fontSize: 12, color: g.done ? MUTED : TEXT }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: g.done ? ACCENT : BORDER, flexShrink: 0 }} />
+                        <span style={{ textDecoration: g.done ? "line-through" : "none" }}>{g.text}</span>
+                      </div>
+                    ))}
+                    {dailyGoals.length === 0 && <div style={{ fontSize: 12, color: MUTED }}>No goals yet — add them in Goals tab.</div>}
+                  </SectionCard>
+
+                  <SectionCard title="7-DAY HISTORY" icon={icons.chart} accent={ACCENT2}>
+                    {dailyHistory.length > 0
+                      ? <BarChart data={historyData} height={80} labels={dailyHistory.slice(-7).map(d => d.date.slice(5))} />
+                      : <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "20px 0" }}>Complete daily goals to see history</div>}
+                  </SectionCard>
+                </div>
+
+                {/* Quick AI prompts */}
+                <SectionCard title="QUICK AI ACTIONS" icon={icons.bolt} accent={GOLD}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {quickPrompts.map((p, i) => (
+                      <button key={i} className="chip-btn" onClick={() => { setActiveTab("ai"); setTimeout(() => sendChat(p), 100); }}
+                        style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 20, padding: "10px 14px", color: MUTED, fontSize: 12, cursor: "pointer", minHeight: 44, display: "flex", alignItems: "center" }}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </SectionCard>
+              </div>
+            )}
+
+            {/* ════ GOALS ════════════════════════════════════════════ */}
+            {activeTab === "goals" && (
+              <div style={{ animation: "slide-in 0.3s ease" }}>
+                <h1 style={{ fontFamily: "'Space Mono',monospace", fontSize: isMobile ? 20 : 22, fontWeight: 700, marginBottom: 4 }}>Goal Tracker</h1>
+                <p style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>Daily · Monthly · 3-Month milestones toward R10M</p>
+
+                {/* Sub-tabs for mobile */}
+                {isMobile && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 16, background: CARD2, borderRadius: 12, padding: 4 }}>
+                    {[["daily","Daily",ACCENT],["monthly","Monthly",ACCENT2],["quarter","3-Month",GOLD]].map(([k,l,c]) => (
+                      <button key={k} onClick={() => setGoalsSubTab(k)} style={{
+                        flex: 1, padding: "10px 4px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 12,
+                        background: goalsSubTab === k ? `${c}18` : "transparent",
+                        color: goalsSubTab === k ? c : MUTED, fontWeight: goalsSubTab === k ? 700 : 400, minHeight: 44,
+                      }}>{l}</button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Desktop: 3 cols; Mobile: single tab */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16 }}>
+                  {(!isMobile || goalsSubTab === "daily") && (
+                    <SectionCard title="DAILY GOALS" icon={icons.tasks} accent={ACCENT} extra={<RadialProgress pct={dailyCompletion} size={40} stroke={5} color={ACCENT} />}>
+                      <div style={{ maxHeight: isMobile ? "none" : 360, overflowY: isMobile ? "visible" : "auto" }}>
+                        {dailyGoals.map(g => <GoalItem key={g.id} goal={g} onToggle={daily.toggle} onDelete={daily.delete} onEdit={daily.edit} />)}
+                        {dailyGoals.length === 0 && <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "16px 0" }}>No daily goals yet.</div>}
+                      </div>
+                      <AddGoalForm onAdd={daily.add} placeholder="Today's goal…" />
+                    </SectionCard>
+                  )}
+                  {(!isMobile || goalsSubTab === "monthly") && (
+                    <SectionCard title="MONTHLY GOALS" icon={icons.calendar} accent={ACCENT2} extra={<RadialProgress pct={monthlyCompletion} size={40} stroke={5} color={ACCENT2} />}>
+                      <div style={{ maxHeight: isMobile ? "none" : 360, overflowY: isMobile ? "visible" : "auto" }}>
+                        {monthlyGoals.map(g => <GoalItem key={g.id} goal={g} onToggle={monthly.toggle} onDelete={monthly.delete} onEdit={monthly.edit} />)}
+                        {monthlyGoals.length === 0 && <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "16px 0" }}>No monthly goals set.</div>}
+                      </div>
+                      <AddGoalForm onAdd={monthly.add} placeholder="This month's goal…" />
+                    </SectionCard>
+                  )}
+                  {(!isMobile || goalsSubTab === "quarter") && (
+                    <SectionCard title="3-MONTH GOALS" icon={icons.target} accent={GOLD} extra={<RadialProgress pct={quarterCompletion} size={40} stroke={5} color={GOLD} />}>
+                      <div style={{ maxHeight: isMobile ? "none" : 360, overflowY: isMobile ? "visible" : "auto" }}>
+                        {quarterGoals.map(g => <GoalItem key={g.id} goal={g} onToggle={quarter.toggle} onDelete={quarter.delete} onEdit={quarter.edit} />)}
+                        {quarterGoals.length === 0 && <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "16px 0" }}>No quarterly goals set.</div>}
+                      </div>
+                      <AddGoalForm onAdd={quarter.add} placeholder="3-month milestone…" />
+                    </SectionCard>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ════ FINANCE ══════════════════════════════════════════ */}
+            {activeTab === "finance" && (
+              <div style={{ animation: "slide-in 0.3s ease" }}>
+                <h1 style={{ fontFamily: "'Space Mono',monospace", fontSize: isMobile ? 20 : 22, fontWeight: 700, marginBottom: 4 }}>Financial Tracker</h1>
+                <p style={{ color: MUTED, fontSize: 12, marginBottom: 16 }}>Track revenue, expenses & your path to R10M</p>
+
+                {/* Big progress card */}
+                <div style={{ background: `linear-gradient(135deg,${CARD},#0F1A14)`, border: `1px solid ${ACCENT}30`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, color: MUTED, fontFamily: "'Space Mono',monospace", letterSpacing: 2 }}>TOTAL REVENUE</div>
+                  <div style={{ fontSize: isMobile ? 30 : 38, fontWeight: 900, color: ACCENT, fontFamily: "'Space Mono',monospace", lineHeight: 1.1, wordBreak: "break-all" }}>
+                    R{totalRevenue.toLocaleString("en-ZA")}
+                  </div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10 }}>
+                    <div><div style={{ fontSize: 9, color: MUTED }}>ON-TRACK</div><div style={{ fontSize: 16, fontWeight: 800, color: targetByNow > totalRevenue ? ACCENT2 : ACCENT, fontFamily: "'Space Mono',monospace" }}>R{(targetByNow/1000).toFixed(0)}K</div></div>
+                    <div><div style={{ fontSize: 9, color: MUTED }}>GAP</div><div style={{ fontSize: 16, fontWeight: 800, color: ACCENT2, fontFamily: "'Space Mono',monospace" }}>R{Math.max(0,(targetByNow-totalRevenue)/1000).toFixed(0)}K</div></div>
+                    <div><div style={{ fontSize: 9, color: MUTED }}>NET</div><div style={{ fontSize: 16, fontWeight: 800, color: netIncome >= 0 ? ACCENT : ACCENT2, fontFamily: "'Space Mono',monospace" }}>R{netIncome.toLocaleString("en-ZA")}</div></div>
+                  </div>
+                  <div style={{ marginTop: 14, background: BORDER, borderRadius: 6, height: 7 }}>
+                    <div style={{ background: `linear-gradient(90deg,${ACCENT},#00D9A6 60%,${GOLD})`, height: "100%", borderRadius: 6, width: `${Math.max(progressPct*100,0.3)}%`, transition: "width 1s" }} />
+                  </div>
+                  <div style={{ fontSize: 9, color: MUTED, marginTop: 3 }}>{(progressPct*100).toFixed(3)}% toward R10M</div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                  {/* Revenue */}
+                  <SectionCard title="REVENUE" icon={icons.money} accent={ACCENT}>
+                    <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 12 }}>
+                      {revenues.length === 0 && <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "12px 0" }}>No revenue entries yet.</div>}
+                      {revenues.map(r => (
+                        <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${BORDER}`, gap: 8 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ color: TEXT, fontSize: 13, wordBreak: "break-word" }}>{r.label}</div>
+                            <div style={{ fontSize: 10, color: MUTED }}>{r.category} · {r.date}</div>
+                          </div>
+                          <span style={{ color: ACCENT, fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>+R{Number(r.amount).toLocaleString("en-ZA")}</span>
+                          <button onClick={() => setRevenues(rv => rv.filter(x => x.id !== r.id))} aria-label="Delete revenue"
+                            style={{ width: 44, height: 44, background: "none", border: "none", cursor: "pointer", color: MUTED, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <Icon d={icons.trash} size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <input value={newRevenue.label} onChange={e => setNewRevenue(r => ({...r, label: e.target.value}))} placeholder="Source"
+                        style={{ flex: "2 1 80px", minWidth: 0, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px", color: TEXT, fontSize: 12, outline: "none", height: 44 }} />
+                      <input value={newRevenue.amount} onChange={e => setNewRevenue(r => ({...r, amount: e.target.value}))} placeholder="Amount" type="number"
+                        style={{ flex: "1 1 60px", minWidth: 0, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px", color: TEXT, fontSize: 12, outline: "none", height: 44 }} />
+                      <button onClick={() => { if (newRevenue.label && newRevenue.amount) { setRevenues(r => [...r, {...newRevenue, id: Date.now().toString(), date: new Date().toLocaleDateString("en-ZA")}]); setNewRevenue({label:"",amount:"",category:"freelance"}); } }}
+                        style={{ background: ACCENT, color: BG, border: "none", borderRadius: 8, width: 44, height: 44, cursor: "pointer", fontWeight: 700, fontSize: 20, flexShrink: 0 }}>+</button>
+                    </div>
+                  </SectionCard>
+
+                  {/* Expenses */}
+                  <SectionCard title="EXPENSES" icon={icons.chart} accent={ACCENT2}>
+                    <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 12 }}>
+                      {expenses.length === 0 && <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "12px 0" }}>No expenses yet.</div>}
+                      {expenses.map(e => (
+                        <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${BORDER}`, gap: 8 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ color: TEXT, fontSize: 13, wordBreak: "break-word" }}>{e.label}</div>
+                            <div style={{ fontSize: 10, color: MUTED }}>{e.category} · {e.date}</div>
+                          </div>
+                          <span style={{ color: ACCENT2, fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>-R{Number(e.amount).toLocaleString("en-ZA")}</span>
+                          <button onClick={() => setExpenses(ex => ex.filter(x => x.id !== e.id))} aria-label="Delete expense"
+                            style={{ width: 44, height: 44, background: "none", border: "none", cursor: "pointer", color: MUTED, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <Icon d={icons.trash} size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <input value={newExpense.label} onChange={e => setNewExpense(r => ({...r, label: e.target.value}))} placeholder="Expense"
+                        style={{ flex: "2 1 80px", minWidth: 0, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px", color: TEXT, fontSize: 12, outline: "none", height: 44 }} />
+                      <input value={newExpense.amount} onChange={e => setNewExpense(r => ({...r, amount: e.target.value}))} placeholder="Amount" type="number"
+                        style={{ flex: "1 1 60px", minWidth: 0, background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px", color: TEXT, fontSize: 12, outline: "none", height: 44 }} />
+                      <button onClick={() => { if (newExpense.label && newExpense.amount) { setExpenses(ex => [...ex, {...newExpense, id: Date.now().toString(), date: new Date().toLocaleDateString("en-ZA")}]); setNewExpense({label:"",amount:"",category:"business"}); } }}
+                        style={{ background: ACCENT2, color: BG, border: "none", borderRadius: 8, width: 44, height: 44, cursor: "pointer", fontWeight: 700, fontSize: 20, flexShrink: 0 }}>+</button>
+                    </div>
+                  </SectionCard>
+                </div>
+              </div>
+            )}
+
+            {/* ════ AI ═══════════════════════════════════════════════ */}
+            {activeTab === "ai" && (
+              <div style={{ animation: "slide-in 0.3s ease", display: "flex", flexDirection: "column", height: isMobile ? "calc(100dvh - 130px)" : "calc(100vh - 60px)" }}>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${ACCENT},#00A878)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Icon d={icons.bolt} size={17} color={BG} />
+                    </div>
+                    <div>
+                      <h1 style={{ fontFamily: "'Space Mono',monospace", fontSize: isMobile ? 18 : 20, fontWeight: 700 }}>APEX AI</h1>
+                      <div style={{ fontSize: 11, color: MUTED }}>Your performance intelligence engine</div>
+                    </div>
+                  </div>
+                  {/* Web search toggle */}
+                  <button onClick={() => setWebPermission(!webPermission)} style={{
+                    padding: "8px 16px", borderRadius: 20, fontSize: 12, cursor: "pointer", minHeight: 44, display: "inline-flex", alignItems: "center",
+                    background: webPermission ? `${ACCENT}22` : CARD2, border: `1px solid ${webPermission ? ACCENT : BORDER}`, color: webPermission ? ACCENT : MUTED, fontWeight: webPermission ? 700 : 400,
+                  }}>
+                    🌐 Web Search {webPermission ? "ON ✓" : "OFF"}
+                  </button>
+                </div>
+
+                {/* Chat messages */}
+                <div style={{ flex: 1, overflowY: "auto", paddingBottom: 8, minHeight: 0 }}>
+                  {chatMessages.map((msg, i) => <ChatBubble key={i} msg={msg} />)}
+                  {isTyping && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg,${ACCENT},#00A878)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon d={icons.bolt} size={14} color={BG} />
+                      </div>
+                      <div style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: "14px 14px 14px 4px", padding: "12px 16px", display: "flex", gap: 4, alignItems: "center" }}>
+                        {[0,1,2].map(i => <div key={i} className="typing-dot" style={{ animationDelay: `${i*0.2}s` }} />)}
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Quick prompts */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  {quickPrompts.map((p, i) => (
+                    <button key={i} className="chip-btn" onClick={() => sendChat(p)}
+                      style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 16, padding: "8px 12px", color: MUTED, fontSize: 11, cursor: "pointer", minHeight: 38, display: "flex", alignItems: "center" }}>{p}</button>
+                  ))}
+                </div>
+
+                {/* Input */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <textarea value={chatInput} onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                    placeholder="Ask APEX… (Enter to send)"
+                    rows={isMobile ? 2 : 2}
+                    style={{ flex: 1, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px", color: TEXT, fontSize: 14, resize: "none", outline: "none", fontFamily: "inherit", minWidth: 0 }}
+                    onFocus={e => e.target.style.borderColor = ACCENT} onBlur={e => e.target.style.borderColor = BORDER} />
+                  <button onClick={() => sendChat()} disabled={!chatInput.trim() || isTyping} aria-label="Send message"
+                    style={{ background: `linear-gradient(135deg,${ACCENT},#00A878)`, color: BG, border: "none", borderRadius: 12, width: 48, minWidth: 48, height: 48, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: (!chatInput.trim() || isTyping) ? 0.5 : 1, alignSelf: "flex-end" }}>
+                    <Icon d={icons.send} size={18} color={BG} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ════ WORKSPACE ════════════════════════════════════════ */}
+            {activeTab === "productivity" && (
+              <div style={{ animation: "slide-in 0.3s ease" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                  <div>
+                    <h1 style={{ fontFamily: "'Space Mono',monospace", fontSize: isMobile ? 18 : 22, fontWeight: 700 }}>Workspace</h1>
+                    <p style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>Double-tap any node to edit · Tap + to add children</p>
+                  </div>
+                  <button onClick={() => addBranch(null, "New Branch")}
+                    style={{ background: `linear-gradient(135deg,${ACCENT},#00A878)`, color: BG, border: "none", borderRadius: 10, padding: "10px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, minHeight: 44 }}>
+                    <Icon d={icons.plus} size={14} color={BG} /> New Branch
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                  <SectionCard title="PROJECT BRANCHES" icon={icons.brain} accent={ACCENT}>
+                    <div style={{ maxHeight: isMobile ? 420 : 560, overflowY: "auto" }}>
+                      {branches.map(node => (
+                        <BranchNode key={node.id} node={node} depth={0} onAdd={addBranch} onDelete={deleteBranch} onEdit={editBranch} onToggle={toggleBranch} />
+                      ))}
+                      {branches.length === 0 && <div style={{ color: MUTED, fontSize: 12, textAlign: "center", padding: "20px 0" }}>No branches yet.</div>}
+                    </div>
+                  </SectionCard>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {/* Branch progress */}
+                    <SectionCard title="BRANCH PROGRESS" icon={icons.chart} accent={ACCENT2}>
+                      {(() => {
+                        const all = [];
+                        const flatten = ns => ns.forEach(n => { all.push(n); flatten(n.children||[]); });
+                        flatten(branches);
+                        const done = all.filter(n => n.done).length;
+                        const total = all.length;
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                            <RadialProgress pct={total > 0 ? done/total : 0} size={64} stroke={6} color={ACCENT2} />
+                            <div>
+                              <div style={{ fontSize: 26, fontWeight: 800, color: ACCENT2, fontFamily: "'Space Mono',monospace" }}>{done}/{total}</div>
+                              <div style={{ fontSize: 11, color: MUTED }}>nodes complete</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </SectionCard>
+
+                    {/* Quick AI prompts for workspace */}
+                    <SectionCard title="AI WORKSPACE HELP" icon={icons.bolt} accent={GOLD}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {["Suggest branches for R10M","Give me a skill-building roadmap","Create a marketing structure","What systems should I build?"].map((q, i) => (
+                          <button key={i} className="chip-btn" onClick={() => { setActiveTab("ai"); setTimeout(() => sendChat(q), 100); }}
+                            style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 12px", color: MUTED, fontSize: 12, cursor: "pointer", textAlign: "left", minHeight: 44, display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: GOLD }}>→</span>{q}
+                          </button>
+                        ))}
+                      </div>
+                    </SectionCard>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>{/* /page content */}
+
+          {/* ── MOBILE BOTTOM NAV ── */}
+          {isMobile && (
+            <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: CARD, borderTop: `1px solid ${BORDER}`, display: "flex", zIndex: 200, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+              aria-label="Main navigation">
+              {navItems.map(item => (
+                <button key={item.id} className="nav-btn" onClick={() => setActiveTab(item.id)} aria-label={item.label} aria-current={activeTab === item.id ? "page" : undefined}
+                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: "8px 0", border: "none", background: "transparent", cursor: "pointer", minHeight: 56, color: activeTab === item.id ? ACCENT : MUTED }}>
+                  <Icon d={item.icon} size={20} color={activeTab === item.id ? ACCENT : MUTED} />
+                  <span style={{ fontSize: 9, fontWeight: activeTab === item.id ? 700 : 400, letterSpacing: 0.3 }}>{item.label}</span>
+                  {activeTab === item.id && <div style={{ width: 4, height: 4, borderRadius: "50%", background: ACCENT, position: "absolute", bottom: 6 }} />}
+                </button>
+              ))}
+            </nav>
+          )}
+
+        </div>{/* /flex column */}
+      </div>{/* /flex row */}
+    </div>
+  );
+}
