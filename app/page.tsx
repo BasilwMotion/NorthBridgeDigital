@@ -193,14 +193,11 @@ export default function Home() {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ node, ...props }: any) => <h1 {...props} />,
-          h2: ({ node, ...props }: any) => <h2 {...props} />,
-          h3: ({ node, ...props }: any) => <h3 {...props} />,
-          code: ({ node, inline, ...props }: any) => 
-            inline ? 
-              <code className="inline-code" {...props} /> :
-              <code {...props} />,
-          pre: ({ node, ...props }: any) => <pre {...props} />,
+          h1: ({node, ...props}: any) => <h1 {...props} />,
+          h2: ({node, ...props}: any) => <h2 {...props} />,
+          h3: ({node, ...props}: any) => <h3 {...props} />,
+          code: ({node, inline, ...props}: any) => inline ? <code {...props} /> : <code {...props} />,
+          pre: ({node, ...props}: any) => <pre {...props} />,
         }}
       >
         {documentation}

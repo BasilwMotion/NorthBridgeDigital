@@ -8,7 +8,6 @@ html {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: #0f1419;
   color: #e0e0e0;
-  scroll-behavior: smooth;
 }
 
 body {
@@ -20,12 +19,12 @@ body {
 main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 60px 24px;
+  padding: 60px 20px;
 }
 
 /* Headings */
 h1 {
-  font-size: 2.8em;
+  font-size: 3em;
   margin: 1.5em 0 0.5em 0;
   color: #ffffff;
   border-bottom: 4px solid #3b82f6;
@@ -34,14 +33,14 @@ h1 {
 }
 
 h2 {
-  font-size: 2em;
+  font-size: 2.2em;
   margin: 1.8em 0 0.6em 0;
   color: #e0e0e0;
   font-weight: 700;
 }
 
 h3 {
-  font-size: 1.5em;
+  font-size: 1.6em;
   margin: 1.2em 0 0.4em 0;
   color: #b0b0b0;
   font-weight: 600;
@@ -58,10 +57,10 @@ p {
 code {
   background: #1a1e2e;
   color: #88c0d0;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
-  font-size: 0.9em;
+  font-size: 0.95em;
   border: 1px solid #2a3a4a;
 }
 
@@ -82,7 +81,7 @@ pre code {
   color: inherit;
   padding: 0;
   border: none;
-  font-size: 0.9em;
+  font-size: 0.95em;
 }
 
 /* Lists */
@@ -133,6 +132,7 @@ a {
   color: #58a6ff;
   text-decoration: none;
   border-bottom: 1px dotted #58a6ff;
+  transition: color 0.2s;
 }
 
 a:hover {
@@ -156,7 +156,7 @@ hr {
   margin: 2em 0;
 }
 
-/* Scrollbar */
+/* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
